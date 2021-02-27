@@ -1,7 +1,7 @@
-FROM nginx:1.18.0-alpine as builder
+FROM nginx:1.14.2-alpine as builder
 LABEL maintainer="NG6"
 
-ARG NGINX_VERSION=1.18.0
+ARG NGINX_VERSION=1.14.2
 
 # For latest build deps, see https://github.com/nginxinc/docker-nginx/blob/master/mainline/alpine/Dockerfile
 RUN apk add --no-cache --virtual .build-deps \
@@ -42,7 +42,7 @@ RUN CONFARGS=$(nginx -V 2>&1 | sed -n -e 's/^.*arguments: //p') \
     --add-dynamic-module=/usr/src/ngx_brotli && \
     make && make install
 
-FROM nginx:1.18.0-alpine 
+FROM nginx:1.14.2-alpine 
 # Extract the dynamic modules from the builder image
 COPY --from=builder /usr/local/nginx/modules/ngx_http_brotli_filter_module.so /usr/local/nginx/modules/ngx_http_brotli_filter_module.so
 COPY --from=builder /usr/local/nginx/modules/ngx_http_brotli_static_module.so /usr/local/nginx/modules/ngx_http_brotli_static_module.so
