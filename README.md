@@ -2,7 +2,7 @@
 
 ## 简介
 ### 两个版本
-#### 基于官方nginx alpine镜像编译
+#### 基于官方nginx alpine 镜像编译
 添加`ngx_cache_purge`、`ngx_brotli`等第三方模块  
 添加`www-data:www-data`，`33:33`用户、组，方便Wordpress用户使用  
 
