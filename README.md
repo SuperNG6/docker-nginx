@@ -12,9 +12,9 @@
 ### 注意：请在自己的conf文件中加载模块
 
 ````
-load_module /usr/local/nginx/modules/ngx_http_brotli_filter_module.so;  
-load_module /usr/local/nginx/modules/ngx_http_brotli_static_module.so;  
-load_module /usr/local/nginx/modules/ngx_http_cache_purge_module.so;  
+load_module /usr/local/nginx/modules/ngx_http_brotli_filter_module.so;
+load_module /usr/local/nginx/modules/ngx_http_brotli_static_module.so;
+load_module /usr/local/nginx/modules/ngx_http_cache_purge_module.so;
 ````
 
 ### brotli 配置文件
