@@ -7,7 +7,7 @@ ARG LUAJIT_INC=/usr/local/luajit/include/luajit-2.0
 # For latest build deps, see https://github.com/nginxinc/docker-nginx/blob/master/stable/debian/Dockerfile
 RUN apt-get update \
     && apt-get install -y \
-    build-essential ca-certificates zlib1g-dev libpcre3 libpcre3-dev tar unzip libssl-dev wget curl git cmake
+    build-essential ca-certificates zlib1g-dev libpcre3 libpcre3-dev uuid-dev tar unzip libssl-dev wget curl git cmake
 
 # Download sources
 RUN mkdir -p /usr/src && \
@@ -17,33 +17,23 @@ RUN mkdir -p /usr/src && \
 RUN cd /usr/src && \
     git clone https://github.com/google/ngx_brotli.git && \
     git clone https://github.com/nginx-modules/ngx_cache_purge.git && \
-    wget https://github.com/openresty/lua-nginx-module/archive/refs/tags/v0.10.20.zip && \
-    wget https://github.com/vision5/ngx_devel_kit/archive/refs/tags/v0.3.1.zip && \
-    wget https://luajit.org/download/LuaJIT-2.0.5.zip && \
-    unzip v0.10.20.zip && \
-    unzip v0.3.1.zip && \
-    unzip LuaJIT-2.0.5.zip && \
-    cd LuaJIT-2.0.5 && \
-    make && \
-    make install PREFIX=/usr/local/luajit && \
-    touch /etc/ld.so.conf.d/luajit.conf && \
-    echo "/usr/local/luajit/lib" > /etc/ld.so.conf.d/luajit.conf && \
-    ldconfig && \
+    wget https://github.com/apache/incubator-pagespeed-ngx/archive/v1.13.35.2-stable.tar.gz && \
+    tar -xzf v1.13.35.2-stable.tar.gz && \
+    cd incubator-pagespeed-ngx-1.13.35.2-stable && \
+    wget https://dl.google.com/dl/page-speed/psol/1.13.35.2-x64.tar.gz && \
+    tar -xzf 1.13.35.2-x64.tar.gz && \
     cd /usr/src/ngx_brotli && git submodule update --init
 
 # Compile nginx && modules
 RUN CONFARGS=$(nginx -V 2>&1 | sed -n -e 's/^.*arguments: //p') \
     cd /usr/src/nginx-$NGINX_VERSION && \
     ./configure --with-compat $CONFARGS \
-    --with-ld-opt=-Wl,-rpath,/usr/local/luajit/lib --add-dynamic-module=/usr/src/lua-nginx-module-0.10.20 --add-dynamic-module=/usr/src/ngx_devel_kit-0.3.1 \
     --add-dynamic-module=/usr/src/ngx_cache_purge \
-    --add-dynamic-module=/usr/src/ngx_brotli && \
+    --add-dynamic-module=/usr/src/ngx_brotli \
+    --add-dynamic-module=/usr/src/incubator-pagespeed-ngx-1.13.35.2-stable && \
     make && make install
 
+
 FROM nginx:1.18.0
-ENV LUAJIT_LIB=/usr/local/luajit/lib
-ENV LUAJIT_INC=/usr/local/luajit/include/luajit-2.0
 # Extract the dynamic modules from the builder image
 COPY --from=builder /usr/local/nginx/modules/ /usr/local/nginx/modules/
-COPY --from=builder /usr/local/luajit /usr/local/luajit
-COPY --from=builder /etc/ld.so.conf.d/luajit.conf /etc/ld.so.conf.d/luajit.conf
