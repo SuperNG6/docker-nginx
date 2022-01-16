@@ -40,9 +40,9 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: |
-            superng6/nginx:stable-${{ steps.set-version.outputs.version }}
-            superng6/nginx:latest
-            superng6/nginx:debian-stable-${{ steps.set-version.outputs.version }}
-            superng6/nginx:debian-latest
+            superng6/openresty:stable-${{ steps.set-version.outputs.version }}
+            superng6/openresty:latest
+            superng6/openresty:debian-stable-${{ steps.set-version.outputs.version }}
+            superng6/openresty:debian-latest
 
 
