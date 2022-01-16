@@ -38,4 +38,4 @@ RUN apt-get update && \
         /var/lib/apt/lists/* \
         /var/tmp/*    
 # Extract the dynamic modules from the builder image
-COPY --from=builder /usr/local/openresty/modules /usr/local/openresty/modules
+COPY --from=builder /usr/local/openresty/nginx/modules /usr/local/openresty/nginx/modules
