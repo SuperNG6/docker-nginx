@@ -33,9 +33,11 @@ RUN apt-get update && \
     apt-get install -y webp && \
     echo "**** cleanup ****" && \
     apt-get clean && \
+    mkdir -p /usr/local/nginx/modules
     rm -rf \
         /tmp/* \
         /var/lib/apt/lists/* \
         /var/tmp/*    
 # Extract the dynamic modules from the builder image
-COPY --from=builder /usr/local/openresty/nginx/modules /usr/local/openresty/nginx/modules
+COPY --from=builder /usr/local/openresty/nginx/modules/  /usr/local/nginx/modules/
+RUN chown -R www:www /usr/local/nginx/modules
