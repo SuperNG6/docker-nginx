@@ -23,8 +23,8 @@ RUN cd /usr/src && \
 RUN CONFARGS=$(nginx -V 2>&1 | sed -n -e 's/^.*arguments: //p') \
     cd /usr/src/openresty-$NGINX_VERSION && \
     ./configure --with-compat $CONFARGS \
-    --user=www \
-    --group=www \
+    --user=www-data \
+    --group=www-data \
     --add-dynamic-module=/usr/src/ngx_cache_purge \
     --add-dynamic-module=/usr/src/ngx_brotli && \
     make && make install
