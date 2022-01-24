@@ -23,6 +23,8 @@ RUN cd /usr/src && \
 RUN CONFARGS=$(nginx -V 2>&1 | sed -n -e 's/^.*arguments: //p') \
     cd /usr/src/openresty-$NGINX_VERSION && \
     ./configure --with-compat $CONFARGS \
+    --user=www \
+    --group=www \
     --add-dynamic-module=/usr/src/ngx_cache_purge \
     --add-dynamic-module=/usr/src/ngx_brotli && \
     make && make install
@@ -33,11 +35,10 @@ RUN apt-get update && \
     apt-get install -y webp && \
     echo "**** cleanup ****" && \
     apt-get clean && \
-    mkdir -p /usr/local/nginx/modules
     rm -rf \
         /tmp/* \
         /var/lib/apt/lists/* \
         /var/tmp/*    
 # Extract the dynamic modules from the builder image
-COPY --from=builder /usr/local/openresty/nginx/modules/  /usr/local/nginx/modules/
-RUN chown -R www:www /usr/local/nginx/modules
+COPY --from=builder /usr/local/openresty/nginx/modules/  /usr/local/openresty/nginx/modules/
+
