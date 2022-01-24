@@ -41,4 +41,5 @@ RUN apt-get update && \
         /var/tmp/*    
 # Extract the dynamic modules from the builder image
 COPY --from=builder /usr/local/openresty/nginx/modules/  /usr/local/openresty/nginx/modules/
+RUN chown -R www-data:www-data /usr/local/openresty
 
