@@ -1,6 +1,9 @@
 FROM nginx:1.18.0 as builder
 LABEL maintainer="NG6"
 
+# RUN sed -i 's|security.debian.org/debian-security|mirrors.ustc.edu.cn/debian-security|g' /etc/apt/sources.list
+# RUN sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list
+
 # For latest build deps, see https://github.com/nginxinc/docker-nginx/blob/master/stable/debian/Dockerfile
 RUN apt-get update \
     && apt-get install -y \
@@ -10,11 +13,13 @@ RUN apt-get update \
 ENV NGINX_VERSION=1.18.0 \
     PAGESPEED_VERSION=1.13.35.2-stable \
     PAGESPEED_ARCH=1.13.35.2-x64 \
-    LUAJIT=2.0.5 \
+    LUAJIT=2.1-20220111 \
     LUA=0.10.20 \
     NDK=0.3.1 \
+    LRC=0.1.22 \
+    LRL=0.11 \
     LUAJIT_LIB=/usr/local/luajit/lib \
-    LUAJIT_INC=/usr/local/luajit/include/luajit-2.0
+    LUAJIT_INC=/usr/local/luajit/include/luajit-2.1
 
 # Download sources
 RUN mkdir -p /usr/src && \
@@ -26,12 +31,19 @@ RUN cd /usr/src && \
     git clone https://github.com/nginx-modules/ngx_cache_purge.git && \
     curl -L https://github.com/openresty/lua-nginx-module/archive/refs/tags/v${LUA}.tar.gz | tar -xz && \
     curl -L https://github.com/vision5/ngx_devel_kit/archive/refs/tags/v${NDK}.tar.gz | tar -xz && \
-    curl -L https://github.com/LuaJIT/LuaJIT/archive/refs/tags/v${LUAJIT}.tar.gz | tar -xz && \
+    curl -L https://github.com/openresty/luajit2/archive/refs/tags/v${LUAJIT}.tar.gz | tar -xz && \
+    wget https://github.com/openresty/lua-resty-core/archive/refs/tags/v${LRC}.tar.gz && tar -xf v${LRC}.tar.gz && \
+    wget https://github.com/openresty/lua-resty-lrucache/archive/refs/tags/v${LRL}.tar.gz && tar -xf v${LRL}.tar.gz && \
     curl -L https://github.com/apache/incubator-pagespeed-ngx/archive/v${PAGESPEED_VERSION}.tar.gz | tar -xz && \
-    curl -L https://dl.google.com/dl/page-speed/psol/${PAGESPEED_ARCH}.tar.gz | tar -xz -C /usr/src/incubator-pagespeed-ngx-${PAGESPEED_VERSION} && \
-    cd /usr/src/ngx_brotli && git submodule update --init && \
-    cd /usr/src/LuaJIT-${LUAJIT} && \
-    make && make install PREFIX=/usr/local/luajit
+    curl -L https://dl.google.com/dl/page-speed/psol/${PAGESPEED_ARCH}.tar.gz | tar -xz -C /usr/src/incubator-pagespeed-ngx-${PAGESPEED_VERSION}
+
+RUN cd /usr/src/ngx_brotli && git submodule update --init && \
+    cd /usr/src/luajit2-${LUAJIT} && \
+    make && make install PREFIX=/usr/local/luajit && \
+    cd /usr/src/lua-resty-core-${LRC} && \
+    make install PREFIX=/etc/nginx && \
+    cd /usr/src/lua-resty-lrucache-${LRL} && \
+    make install PREFIX=/etc/nginx
 
 
 # Compile nginx && modules
@@ -48,6 +60,19 @@ RUN CONFARGS=$(nginx -V 2>&1 | sed -n -e 's/^.*arguments: //p') \
 
 
 FROM nginx:1.18.0
+
+RUN apt-get update \
+    && apt-get install -y webp \
+    && apt-get clean && \
+    rm -rf \
+        /tmp/* \
+        /var/lib/apt/lists/* \
+        /var/tmp/*
+
 # Extract the dynamic modules from the builder image
 COPY --from=builder /usr/local/luajit /usr/local/luajit
 COPY --from=builder /usr/local/nginx/modules/ /usr/local/nginx/modules/
+COPY --from=builder /etc/nginx /etc/nginx
+
+ENV LUAJIT_LIB=/usr/local/luajit/lib \
+    LUAJIT_INC=/usr/local/luajit/include/luajit-2.1
