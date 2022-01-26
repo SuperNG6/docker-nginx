@@ -40,7 +40,6 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: |
-            superng6/nginx:debian-lua-${{ steps.set-version.outputs.version }}
-            superng6/nginx:debian-lua-latest
+            superng6/nginx:lua-${{ steps.set-version.outputs.version }}
 
 
