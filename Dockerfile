@@ -1,4 +1,4 @@
-FROM nginx:1.20.2 as builder
+FROM nginx:1.18.0 as builder
 LABEL maintainer="NG6"
 
 # RUN sed -i 's|security.debian.org/debian-security|mirrors.ustc.edu.cn/debian-security|g' /etc/apt/sources.list
@@ -10,7 +10,7 @@ RUN apt-get update \
     build-essential ca-certificates zlib1g-dev libpcre3 libpcre3-dev uuid-dev tar unzip libssl-dev wget curl git cmake
 
 
-ENV NGINX_VERSION=1.20.2 \
+ENV NGINX_VERSION=1.18.0 \
     PAGESPEED_VERSION=1.13.35.2-stable \
     PAGESPEED_ARCH=1.13.35.2-x64 \
     LUAJIT=2.1-20220111 \
@@ -20,6 +20,10 @@ ENV NGINX_VERSION=1.20.2 \
     LRL=0.11 \
     LUAJIT_LIB=/usr/local/luajit/lib \
     LUAJIT_INC=/usr/local/luajit/include/luajit-2.1
+
+# Download sources
+RUN mkdir -p /usr/src && \
+    curl http://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz | tar -xz -C /usr/src/
 
 # Reuse same cli arguments as the nginx:alpine image used to build
 RUN cd /usr/src && \
@@ -42,10 +46,6 @@ RUN cd /usr/src/ngx_brotli && git submodule update --init && \
     make install PREFIX=/etc/nginx
 
 
-RUN cd /usr/src && curl -L https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.2.2-linux-x86-64.tar.gz | tar -xz && \
-    chmod a+x /usr/src/libwebp-1.2.2-linux-x86-64/bin/cwebp
-
-
 # Compile nginx && modules
 RUN CONFARGS=$(nginx -V 2>&1 | sed -n -e 's/^.*arguments: //p') \
     cd /usr/src/nginx-$NGINX_VERSION && \
@@ -59,14 +59,7 @@ RUN CONFARGS=$(nginx -V 2>&1 | sed -n -e 's/^.*arguments: //p') \
     make && make install
 
 
-FROM nginx:1.20.2
-# Extract the dynamic modules from the builder image
-COPY --from=builder /usr/local/luajit /usr/local/luajit
-COPY --from=builder /usr/local/nginx/modules/ /usr/local/nginx/modules/
-COPY --from=builder /etc/nginx /etc/nginx
-
-ENV LUAJIT_LIB=/usr/local/luajit/lib \
-    LUAJIT_INC=/usr/local/luajit/include/luajit-2.1
+FROM nginx:1.18.0
 
 RUN apt-get update \
     && apt-get install -y webp \
@@ -75,3 +68,11 @@ RUN apt-get update \
         /tmp/* \
         /var/lib/apt/lists/* \
         /var/tmp/*
+
+# Extract the dynamic modules from the builder image
+COPY --from=builder /usr/local/luajit /usr/local/luajit
+COPY --from=builder /usr/local/nginx/modules/ /usr/local/nginx/modules/
+COPY --from=builder /etc/nginx /etc/nginx
+
+ENV LUAJIT_LIB=/usr/local/luajit/lib \
+    LUAJIT_INC=/usr/local/luajit/include/luajit-2.1
