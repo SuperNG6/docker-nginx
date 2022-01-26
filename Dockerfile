@@ -64,8 +64,6 @@ RUN CONFARGS=$(nginx -V 2>&1 | sed -n -e 's/^.*arguments: //p') \
 
 
 FROM nginx:1.20.2
-
-
 # Extract the dynamic modules from the builder image
 COPY --from=builder /usr/local/luajit /usr/local/luajit
 COPY --from=builder /usr/local/nginx/modules/ /usr/local/nginx/modules/
