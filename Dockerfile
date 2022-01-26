@@ -46,6 +46,10 @@ RUN cd /usr/src/ngx_brotli && git submodule update --init && \
     make install PREFIX=/etc/nginx
 
 
+RUN cd /usr/src && curl -L https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.2.2-linux-x86-64.tar.gz | tar -xz && \
+    chmod a+x /usr/src/libwebp-1.2.2-linux-x86-64/bin/cwebp
+
+
 # Compile nginx && modules
 RUN CONFARGS=$(nginx -V 2>&1 | sed -n -e 's/^.*arguments: //p') \
     cd /usr/src/nginx-$NGINX_VERSION && \
@@ -61,18 +65,12 @@ RUN CONFARGS=$(nginx -V 2>&1 | sed -n -e 's/^.*arguments: //p') \
 
 FROM nginx:1.20.2
 
-RUN apt-get update \
-    && apt-get install -y webp \
-    && apt-get clean && \
-    rm -rf \
-        /tmp/* \
-        /var/lib/apt/lists/* \
-        /var/tmp/*
 
 # Extract the dynamic modules from the builder image
 COPY --from=builder /usr/local/luajit /usr/local/luajit
 COPY --from=builder /usr/local/nginx/modules/ /usr/local/nginx/modules/
 COPY --from=builder /etc/nginx /etc/nginx
+COPY --from=builder /usr/src/libwebp-1.2.2-linux-x86-64/bin/cwebp /usr/bin/cwebp
 
 ENV LUAJIT_LIB=/usr/local/luajit/lib \
     LUAJIT_INC=/usr/local/luajit/include/luajit-2.1
