@@ -21,10 +21,6 @@ ENV NGINX_VERSION=1.18.0 \
     LUAJIT_LIB=/usr/local/luajit/lib \
     LUAJIT_INC=/usr/local/luajit/include/luajit-2.1
 
-# Download sources
-RUN mkdir -p /usr/src && \
-    curl http://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz | tar -xz -C /usr/src/
-
 # Reuse same cli arguments as the nginx:alpine image used to build
 RUN cd /usr/src && \
     git clone https://github.com/google/ngx_brotli.git && \
@@ -68,7 +64,14 @@ FROM nginx:1.18.0
 COPY --from=builder /usr/local/luajit /usr/local/luajit
 COPY --from=builder /usr/local/nginx/modules/ /usr/local/nginx/modules/
 COPY --from=builder /etc/nginx /etc/nginx
-COPY --from=builder /usr/src/libwebp-1.2.2-linux-x86-64/bin/cwebp /usr/bin/cwebp
 
 ENV LUAJIT_LIB=/usr/local/luajit/lib \
     LUAJIT_INC=/usr/local/luajit/include/luajit-2.1
+
+RUN apt-get update \
+    && apt-get install -y webp \
+    && apt-get clean && \
+    rm -rf \
+        /tmp/* \
+        /var/lib/apt/lists/* \
+        /var/tmp/*
