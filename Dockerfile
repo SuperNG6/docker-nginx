@@ -1,4 +1,4 @@
-FROM nginx:1.18.0 as builder
+FROM nginx:1.20.2 as builder
 LABEL maintainer="NG6"
 
 # RUN sed -i 's|security.debian.org/debian-security|mirrors.ustc.edu.cn/debian-security|g' /etc/apt/sources.list
@@ -10,7 +10,7 @@ RUN apt-get update \
     build-essential ca-certificates zlib1g-dev libpcre3 libpcre3-dev uuid-dev tar unzip libssl-dev wget curl git cmake
 
 
-ENV NGINX_VERSION=1.18.0 \
+ENV NGINX_VERSION=1.20.2 \
     PAGESPEED_VERSION=1.13.35.2-stable \
     PAGESPEED_ARCH=1.13.35.2-x64 \
     LUAJIT=2.1-20220111 \
@@ -59,7 +59,7 @@ RUN CONFARGS=$(nginx -V 2>&1 | sed -n -e 's/^.*arguments: //p') \
     make && make install
 
 
-FROM nginx:1.18.0
+FROM nginx:1.20.2
 
 RUN apt-get update \
     && apt-get install -y webp \
