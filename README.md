@@ -5,13 +5,18 @@
 #### 基于官方nginx debian:buster-slim 镜像编译
 添加`ngx_cache_purge`、`ngx_brotli`、 `ngx_pagespeed`等第三方模块  
 
+### 更新日志
+#### 2022年8月1日
+1.22.0 版取消ngx_cache_purge模块，ngx_cache_purge的意义越来越小了，并且对最新版NGINX存在兼容性问题，故取消
+有需要的可以下载1.20.2版
+
 ### 注意：请在自己的conf文件中加载模块
 
 ````
 load_module /usr/local/nginx/modules/ngx_http_brotli_filter_module.so;
 load_module /usr/local/nginx/modules/ngx_http_brotli_static_module.so;
 load_module /usr/local/nginx/modules/ngx_http_cache_purge_module.so;
-load_module /usr/local/nginx/modules/ngx_pagespeed.so;
+<!-- load_module /usr/local/nginx/modules/ngx_pagespeed.so; -->
 ````
 
 ### brotli 配置文件
