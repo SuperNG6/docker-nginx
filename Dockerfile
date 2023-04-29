@@ -1,7 +1,7 @@
-FROM nginx:1.22.0 as builder
+FROM nginx:1.24.0 as builder
 LABEL maintainer="NG6"
 
-ARG NGINX_VERSION=1.22.0
+ARG NGINX_VERSION=1.24.0
 
 # For latest build deps, see https://github.com/nginxinc/docker-nginx/blob/master/stable/debian/Dockerfile
 RUN apt-get update \
@@ -14,6 +14,7 @@ RUN mkdir -p /usr/src && \
 
 # Reuse same cli arguments as the nginx:alpine image used to build
 RUN cd /usr/src && \
+    git clone --recursive https://github.com/cloudflare/quiche && \
     git clone https://github.com/google/ngx_brotli.git && \
     git clone https://github.com/nginx-modules/ngx_cache_purge.git && \
     cd /usr/src/ngx_brotli && git submodule update --init
@@ -27,6 +28,6 @@ RUN CONFARGS=$(nginx -V 2>&1 | sed -n -e 's/^.*arguments: //p') \
     make && make install
 
 
-FROM nginx:1.22.0
+FROM nginx:1.24.0
 # Extract the dynamic modules from the builder image
 COPY --from=builder /usr/local/nginx/modules/ /usr/local/nginx/modules/
