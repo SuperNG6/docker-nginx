@@ -23,7 +23,7 @@ RUN CONFARGS=$(nginx -V 2>&1 | sed -n -e 's/^.*arguments: //p') \
     --add-dynamic-module=/usr/src/ngx_brotli && \
     make && make install
 
-ARG NGINX_VERSION=defaultValue
+
 FROM nginx:${NGINX_VERSION}
 # Extract the dynamic modules from the builder image
 COPY --from=builder /usr/local/nginx/modules/ngx_http_brotli_static_module.so /etc/nginx/modules/
