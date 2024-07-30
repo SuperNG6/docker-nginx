@@ -6,7 +6,7 @@ ARG NGINX_VERSION=1.26.1
 # For latest build deps, see https://github.com/nginxinc/docker-nginx/blob/master/stable/debian/Dockerfile
 RUN apt-get update \
     && apt-get install -y \
-    build-essential ca-certificates zlib1g-dev libpcre3 libpcre3-dev uuid-dev tar unzip libssl-dev wget curl git cmake
+    build-essential ca-certificates libpcre3 libpcre3-dev zlib1g zlib1g-dev openssl libssl-dev wget git gcc make libbrotli-dev
 
 # Download sources
 RUN mkdir -p /usr/src && \
