@@ -1,4 +1,5 @@
-FROM nginx:NGINX_VERSION as builder
+ARG NGINX_VERSION=defaultValue
+FROM nginx:${NGINX_VERSION} as builder
 LABEL maintainer="NG6"
 
 # For latest build deps, see https://github.com/nginxinc/docker-nginx/blob/master/stable/debian/Dockerfile
@@ -22,7 +23,8 @@ RUN CONFARGS=$(nginx -V 2>&1 | sed -n -e 's/^.*arguments: //p') \
     --add-dynamic-module=/usr/src/ngx_brotli && \
     make && make install
 
-
-FROM nginx:NGINX_VERSION
+ARG NGINX_VERSION=defaultValue
+FROM nginx:${NGINX_VERSION}
 # Extract the dynamic modules from the builder image
-COPY --from=builder /usr/local/nginx/modules/ /usr/local/nginx/modules/
+COPY --from=builder /usr/local/nginx/modules/ngx_http_brotli_static_module.so /etc/nginx/modules/
+COPY --from=builder /usr/local/nginx/modules/ngx_http_brotli_static_module.so /etc/nginx/modules/
