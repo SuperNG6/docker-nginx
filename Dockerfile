@@ -1,7 +1,5 @@
-FROM nginx:1.26.1 as builder
+FROM nginx:NGINX_VERSION as builder
 LABEL maintainer="NG6"
-
-ARG NGINX_VERSION=1.26.1
 
 # For latest build deps, see https://github.com/nginxinc/docker-nginx/blob/master/stable/debian/Dockerfile
 RUN apt-get update \
@@ -25,6 +23,6 @@ RUN CONFARGS=$(nginx -V 2>&1 | sed -n -e 's/^.*arguments: //p') \
     make && make install
 
 
-FROM nginx:1.26.1
+FROM nginx:NGINX_VERSION
 # Extract the dynamic modules from the builder image
 COPY --from=builder /usr/local/nginx/modules/ /usr/local/nginx/modules/

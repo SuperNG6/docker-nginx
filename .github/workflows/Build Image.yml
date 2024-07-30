@@ -39,10 +39,10 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm/v7,linux/arm64
           push: true
+          build-args: |
+            NGINX_VERSION=${{ steps.set-version.outputs.version }}
           tags: |
             superng6/nginx:stable-${{ steps.set-version.outputs.version }}
             superng6/nginx:latest
             superng6/nginx:debian-stable-${{ steps.set-version.outputs.version }}
             superng6/nginx:debian-latest
-
-
