@@ -14,16 +14,13 @@ RUN mkdir -p /usr/src && \
 
 # Reuse same cli arguments as the nginx:alpine image used to build
 RUN cd /usr/src && \
-    git clone --recursive https://github.com/cloudflare/quiche && \
     git clone https://github.com/google/ngx_brotli.git && \
-    git clone https://github.com/nginx-modules/ngx_cache_purge.git && \
     cd /usr/src/ngx_brotli && git submodule update --init
 
 # Compile nginx && modules
 RUN CONFARGS=$(nginx -V 2>&1 | sed -n -e 's/^.*arguments: //p') \
     cd /usr/src/nginx-$NGINX_VERSION && \
     ./configure --with-compat $CONFARGS \
-    --add-dynamic-module=/usr/src/ngx_cache_purge \
     --add-dynamic-module=/usr/src/ngx_brotli && \
     make && make install
 
