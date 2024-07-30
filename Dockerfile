@@ -27,4 +27,4 @@ RUN CONFARGS=$(nginx -V 2>&1 | sed -n -e 's/^.*arguments: //p') \
 FROM nginx:${NGINX_VERSION}
 # Extract the dynamic modules from the builder image
 COPY --from=builder /usr/local/nginx/modules/ngx_http_brotli_static_module.so /etc/nginx/modules/
-COPY --from=builder /usr/local/nginx/modules/ngx_http_brotli_static_module.so /etc/nginx/modules/
+COPY --from=builder /usr/local/nginx/modules/ngx_http_brotli_filter_module.so /etc/nginx/modules/
