@@ -9,6 +9,8 @@ RUN apt-get update \
 # Download sources
 RUN curl http://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz | tar -xz -C /usr/src/
 RUN git clone https://github.com/arut/nginx-dav-ext-module.git /usr/src/nginx-dav-ext-module
+RUN git clone https://github.com/openresty/headers-more-nginx-module.git /usr/src/headers-more-nginx-module
+
 
 # Reuse same cli arguments as the nginx:alpine image used to build
 RUN cd /usr/src && \
@@ -20,6 +22,7 @@ RUN CONFARGS=$(nginx -V 2>&1 | sed -n -e 's/^.*arguments: //p') \
     cd /usr/src/nginx-$NGINX_VERSION && \
     ./configure --with-compat $CONFARGS \
     --add-dynamic-module=/usr/src/ngx_brotli \
+    --add-dynamic-module=/usr/src/headers-more-nginx-module \
     --add-dynamic-module=/usr/src/nginx-dav-ext-module && \
     make && make install
 
