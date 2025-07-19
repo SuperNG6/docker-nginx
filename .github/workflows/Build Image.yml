@@ -3,49 +3,154 @@ name: Build Docker Image
 on:
   workflow_dispatch:
 
+env:
+  # Docker Hub 镜像名称
+  DOCKER_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/nginx
+  # GitHub Container Registry (ghcr.io) 镜像名称
+  GHCR_IMAGE: ghcr.io/${{ github.repository_owner }}/nginx
+
 jobs:
-  buildx:
+  # Job 1: 准备阶段 - 从文件获取版本号
+  get-version:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.set-version.outputs.version }}
     steps:
-      # 检出代码
-      - name: 检出代码
+      - name: Checkout Repository
         uses: actions/checkout@v4
-      
-      # 设置 QEMU
-      - name: 设置 QEMU
+
+      - name: Get Version from ReleaseTag file
+        id: set-version
+        run: |
+          echo "NGINX_VERSION=${VERSION}"
+          # 将版本号设置为后续 Job 可以使用的输出变量
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+  # Job 2: 构建阶段 - 使用矩阵为多平台分别构建
+  build:
+    runs-on: ubuntu-latest
+    needs: get-version
+    permissions:
+      contents: read
+      packages: write # 需要写 ghcr.io 的权限
+    strategy:
+      fail-fast: false
+      matrix:
+        # 你可以按需增删平台
+        platform:
+          - linux/amd64
+          - linux/arm64
+          - linux/arm/v7
+          - linux/ppc64le
+          - linux/s390x
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Prepare platform name for artifact
+        run: echo "PLATFORM_PAIR=${{ matrix.platform }}" | tr '/' '-' >> $GITHUB_ENV
+
+      - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
-      
-      # 设置 Docker Buildx
-      - name: 设置 Docker Buildx
+
+      - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # 登录到 Docker Hub
-      - name: 登录到 Docker Hub
+      - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # 获得仓库中的ReleaseTag
-      - name: Set Version
-        id: set-version
-        run: |
-          echo "::set-output name=version::$(cat ReleaseTag | head -n1)"
-          echo "ReleaseTag=$(cat ReleaseTag | head -n1)" 
-          echo "::set-output name=status::success"
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Build and push
-      - name: Build dockerfile
-        if: steps.set-version.outputs.status == 'success'
+      - name: Build and Push by digest
+        id: build
         uses: docker/build-push-action@v6
         with:
+          context: .
           file: ./Dockerfile
-          platforms: linux/amd64,linux/arm/v7,linux/arm64
-          push: true
+          platforms: ${{ matrix.platform }}
           build-args: |
-            NGINX_VERSION=${{ steps.set-version.outputs.version }}
-          tags: |
-            superng6/nginx:stable-${{ steps.set-version.outputs.version }}
-            superng6/nginx:latest
-            superng6/nginx:debian-stable-${{ steps.set-version.outputs.version }}
-            superng6/nginx:debian-latest
+            NGINX_VERSION=${{ needs.get-version.outputs.version }}
+          # 初始推送时不打标签，只按摘要(digest)推送到双仓库
+          tags: |-
+            ${{ env.DOCKER_IMAGE }}
+            ${{ env.GHCR_IMAGE }}
+          outputs: type=image,push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.platform }}
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          # 将摘要写入一个空文件，文件名就是摘要本身
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ env.PLATFORM_PAIR }}
+          path: /tmp/digests/*
+          retention-days: 1
+
+  # Job 3: 合并阶段 - 创建 manifest list 并打上最终标签
+  merge-and-tag:
+    runs-on: ubuntu-latest
+    needs: [get-version, build]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download all digests
+        uses: actions/download-artifact@v4
+        with:
+          pattern: digests-* # 下载所有以 digests- 开头的 artifact
+          path: /tmp/digests
+          merge-multiple: true # 将所有下载的 artifact 合并到一个目录
+
+      - name: Create and Push manifest list
+        working-directory: /tmp/digests
+        run: |
+          # 检查目录是否为空，如果为空则说明构建失败
+          if [ -z "$(ls -A .)" ]; then
+            echo "Error: No digests found to merge."
+            exit 1
+          fi
+
+          echo "Creating manifest list for dual registries with tags: latest, stable-${{ needs.get-version.outputs.version }}"
+
+          # 使用 imagetools 将所有平台的镜像摘要合并成一个 manifest list，并打上最终的标签
+          docker buildx imagetools create \
+            --tag ${{ env.DOCKER_IMAGE }}:latest \
+            --tag ${{ env.DOCKER_IMAGE }}:stable-${{ needs.get-version.outputs.version }} \
+            --tag ${{ env.GHCR_IMAGE }}:latest \
+            --tag ${{ env.GHCR_IMAGE }}:stable-${{ needs.get-version.outputs.version }} \
+            $(printf '${{ env.DOCKER_IMAGE }}@sha256:%s ' *)
+
+      - name: Inspect final images
+        if: always()
+        run: |
+          echo "--- Inspecting Docker Hub image ---"
+          docker buildx imagetools inspect ${{ env.DOCKER_IMAGE }}:latest
+          echo "--- Inspecting GHCR image ---"
+          docker buildx imagetools inspect ${{ env.GHCR_IMAGE }}:latest
