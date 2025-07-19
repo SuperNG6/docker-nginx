@@ -1,13 +1,14 @@
 name: Build Docker Image
 
 on:
+  # 仅允许手动触发
   workflow_dispatch:
 
 env:
   # Docker Hub 镜像名称
-  DOCKER_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/nginx
+  DOCKER_IMAGE: superng6/nginx
   # GitHub Container Registry (ghcr.io) 镜像名称
-  GHCR_IMAGE: ghcr.io/${{ github.repository_owner }}/nginx
+  GHCR_IMAGE: ghcr.io/superng6/nginx
 
 jobs:
   # Job 1: 准备阶段 - 从文件获取版本号
@@ -22,7 +23,16 @@ jobs:
       - name: Get Version from ReleaseTag file
         id: set-version
         run: |
-          echo "NGINX_VERSION=${VERSION}"
+          # 从 ReleaseTag 文件第一行读取版本号，并清理所有空白字符和回车符
+          VERSION=$(head -n 1 ReleaseTag | xargs)
+
+          # 再次检查清理后的版本号是否为空
+          if [[ -z "$VERSION" ]]; then
+            echo "::error::Version is empty after reading from ReleaseTag. Please check the file."
+            exit 1
+          fi
+          
+          echo "Found NGINX version: ${VERSION}"
           # 将版本号设置为后续 Job 可以使用的输出变量
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
@@ -38,9 +48,11 @@ jobs:
       matrix:
         # 你可以按需增删平台
         platform:
+          - linux/386
           - linux/amd64
-          - linux/arm64
+          - linux/arm/v6
           - linux/arm/v7
+          - linux/arm64
           - linux/ppc64le
           - linux/s390x
     steps:
@@ -68,6 +80,9 @@ jobs:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Display Received Version
+        run: echo "Building with NGINX_VERSION = ${{ needs.get-version.outputs.version }}"
 
       - name: Build and Push by digest
         id: build
