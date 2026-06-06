@@ -1,5 +1,5 @@
 # 默认值只在 build-arg 未提供时生效。如果提供了空值，则变量为空。
-ARG NGINX_VERSION=1.26.1
+ARG NGINX_VERSION=1.30.2
 
 # Builder Stage: 用于编译模块
 FROM nginx:${NGINX_VERSION} AS builder

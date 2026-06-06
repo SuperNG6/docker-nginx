@@ -1,52 +1,85 @@
 name: Build Docker Image
 
 on:
-  # 仅允许手动触发
   workflow_dispatch:
+  schedule:
+    # Every Monday 09:00 Asia/Shanghai.
+    - cron: "0 1 * * 1"
 
 env:
-  # Docker Hub 镜像名称
   DOCKER_IMAGE: superng6/nginx
-  # GitHub Container Registry (ghcr.io) 镜像名称
   GHCR_IMAGE: ghcr.io/superng6/nginx
+  NGINX_DOWNLOAD_URL: https://nginx.org/en/download.html
 
 jobs:
-  # Job 1: 准备阶段 - 从文件获取版本号
-  get-version:
+  check-version:
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.set-version.outputs.version }}
+      version: ${{ steps.check.outputs.version }}
+      should_build: ${{ steps.check.outputs.should_build }}
+      changes_url: ${{ steps.check.outputs.changes_url }}
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Get Version from ReleaseTag file
-        id: set-version
+      - name: Check latest stable nginx version
+        id: check
+        shell: bash
         run: |
-          # 从 ReleaseTag 文件第一行读取版本号，并清理所有空白字符和回车符
-          VERSION=$(head -n 1 ReleaseTag | xargs)
+          set -euo pipefail
 
-          # 再次检查清理后的版本号是否为空
-          if [[ -z "$VERSION" ]]; then
-            echo "::error::Version is empty after reading from ReleaseTag. Please check the file."
+          latest_version="$(
+            curl -fsSL "$NGINX_DOWNLOAD_URL" |
+              perl -0777 -ne 'print "$1\n" if /Stable version.*?nginx-([0-9]+\.[0-9]+\.[0-9]+)\.tar\.gz/s'
+          )"
+
+          if [[ -z "$latest_version" ]]; then
+            echo "::error::Failed to parse latest stable nginx version from $NGINX_DOWNLOAD_URL"
             exit 1
           fi
-          
-          echo "Found NGINX version: ${VERSION}"
-          # 将版本号设置为后续 Job 可以使用的输出变量
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
-  # Job 2: 构建阶段 - 使用矩阵为多平台分别构建
+          docker_tag_url="https://hub.docker.com/v2/repositories/${DOCKER_IMAGE}/tags/stable-${latest_version}"
+          docker_tag_status="$(curl -sS -o /tmp/docker-tag.json -w "%{http_code}" "$docker_tag_url")"
+
+          case "$docker_tag_status" in
+            200)
+              should_build=false
+              echo "Docker Hub already has ${DOCKER_IMAGE}:stable-${latest_version}"
+              ;;
+            404)
+              should_build=true
+              echo "Docker Hub does not have ${DOCKER_IMAGE}:stable-${latest_version}; build is needed"
+              ;;
+            *)
+              echo "::error::Docker Hub tag check failed with HTTP ${docker_tag_status}"
+              exit 1
+              ;;
+          esac
+
+          changes_url="https://nginx.org/en/CHANGES-${latest_version%.*}"
+
+          {
+            echo "version=${latest_version}"
+            echo "should_build=${should_build}"
+            echo "changes_url=${changes_url}"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## nginx stable check"
+            echo
+            echo "- Latest stable: ${latest_version}"
+            echo "- Docker Hub tag: ${DOCKER_IMAGE}:stable-${latest_version}"
+            echo "- Build needed: ${should_build}"
+            echo "- Changelog: ${changes_url}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   build:
     runs-on: ubuntu-latest
-    needs: get-version
+    needs: check-version
+    if: needs.check-version.outputs.should_build == 'true'
     permissions:
       contents: read
-      packages: write # 需要写 ghcr.io 的权限
+      packages: write
     strategy:
       fail-fast: false
       matrix:
-        # 你可以按需增删平台
         platform:
           - linux/386
           - linux/amd64
@@ -60,7 +93,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Prepare platform name for artifact
-        run: echo "PLATFORM_PAIR=${{ matrix.platform }}" | tr '/' '-' >> $GITHUB_ENV
+        run: echo "PLATFORM_PAIR=${{ matrix.platform }}" | tr '/' '-' >> "$GITHUB_ENV"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -81,9 +114,6 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Display Received Version
-        run: echo "Building with NGINX_VERSION = ${{ needs.get-version.outputs.version }}"
-
       - name: Build and Push by digest
         id: build
         uses: docker/build-push-action@v6
@@ -92,8 +122,7 @@ jobs:
           file: ./Dockerfile
           platforms: ${{ matrix.platform }}
           build-args: |
-            NGINX_VERSION=${{ needs.get-version.outputs.version }}
-          # 初始推送时不打标签，只按摘要(digest)推送到双仓库
+            NGINX_VERSION=${{ needs.check-version.outputs.version }}
           tags: |-
             ${{ env.DOCKER_IMAGE }}
             ${{ env.GHCR_IMAGE }}
@@ -105,7 +134,6 @@ jobs:
         run: |
           mkdir -p /tmp/digests
           digest="${{ steps.build.outputs.digest }}"
-          # 将摘要写入一个空文件，文件名就是摘要本身
           touch "/tmp/digests/${digest#sha256:}"
 
       - name: Upload digest as artifact
@@ -115,12 +143,12 @@ jobs:
           path: /tmp/digests/*
           retention-days: 1
 
-  # Job 3: 合并阶段 - 创建 manifest list 并打上最终标签
-  merge-and-tag:
+  merge-and-release:
     runs-on: ubuntu-latest
-    needs: [get-version, build]
+    needs: [check-version, build]
+    if: needs.check-version.outputs.should_build == 'true'
     permissions:
-      contents: read
+      contents: write
       packages: write
     steps:
       - name: Login to Docker Hub
@@ -139,33 +167,89 @@ jobs:
       - name: Download all digests
         uses: actions/download-artifact@v4
         with:
-          pattern: digests-* # 下载所有以 digests- 开头的 artifact
+          pattern: digests-*
           path: /tmp/digests
-          merge-multiple: true # 将所有下载的 artifact 合并到一个目录
+          merge-multiple: true
 
       - name: Create and Push manifest list
         working-directory: /tmp/digests
         run: |
-          # 检查目录是否为空，如果为空则说明构建失败
-          if [ -z "$(ls -A .)" ]; then
-            echo "Error: No digests found to merge."
+          set -euo pipefail
+
+          if [[ -z "$(ls -A .)" ]]; then
+            echo "::error::No digests found to merge."
             exit 1
           fi
 
-          echo "Creating manifest list for dual registries with tags: latest, stable-${{ needs.get-version.outputs.version }}"
+          version="${{ needs.check-version.outputs.version }}"
 
-          # 使用 imagetools 将所有平台的镜像摘要合并成一个 manifest list，并打上最终的标签
           docker buildx imagetools create \
-            --tag ${{ env.DOCKER_IMAGE }}:latest \
-            --tag ${{ env.DOCKER_IMAGE }}:stable-${{ needs.get-version.outputs.version }} \
-            --tag ${{ env.GHCR_IMAGE }}:latest \
-            --tag ${{ env.GHCR_IMAGE }}:stable-${{ needs.get-version.outputs.version }} \
+            --tag "${{ env.DOCKER_IMAGE }}:latest" \
+            --tag "${{ env.DOCKER_IMAGE }}:stable-${version}" \
+            --tag "${{ env.GHCR_IMAGE }}:latest" \
+            --tag "${{ env.GHCR_IMAGE }}:stable-${version}" \
             $(printf '${{ env.DOCKER_IMAGE }}@sha256:%s ' *)
 
       - name: Inspect final images
-        if: always()
         run: |
+          version="${{ needs.check-version.outputs.version }}"
+
           echo "--- Inspecting Docker Hub image ---"
-          docker buildx imagetools inspect ${{ env.DOCKER_IMAGE }}:latest
+          docker buildx imagetools inspect "${{ env.DOCKER_IMAGE }}:stable-${version}"
+
           echo "--- Inspecting GHCR image ---"
-          docker buildx imagetools inspect ${{ env.GHCR_IMAGE }}:latest
+          docker buildx imagetools inspect "${{ env.GHCR_IMAGE }}:stable-${version}"
+
+      - name: Write release notes
+        env:
+          VERSION: ${{ needs.check-version.outputs.version }}
+          CHANGES_URL: ${{ needs.check-version.outputs.changes_url }}
+        run: |
+          set -euo pipefail
+
+          curl -fsSL "$CHANGES_URL" -o /tmp/nginx-changes
+
+          awk -v version="$VERSION" '
+            $0 ~ "^Changes with nginx " version "([[:space:]]|$)" { found = 1; print; next }
+            found && /^Changes with nginx / { exit }
+            found { print }
+          ' /tmp/nginx-changes > /tmp/nginx-release-notes
+
+          if [[ -z "$(tr -d '[:space:]' < /tmp/nginx-release-notes)" ]]; then
+            echo "::error::Failed to extract release notes for nginx ${VERSION}"
+            exit 1
+          fi
+
+          {
+            echo "Docker images:"
+            echo
+            echo "- docker.io/${{ env.DOCKER_IMAGE }}:stable-${VERSION}"
+            echo "- docker.io/${{ env.DOCKER_IMAGE }}:latest"
+            echo "- ${{ env.GHCR_IMAGE }}:stable-${VERSION}"
+            echo "- ${{ env.GHCR_IMAGE }}:latest"
+            echo
+            echo "Official nginx changelog:"
+            echo
+            cat /tmp/nginx-release-notes
+            echo
+            echo "Source: ${CHANGES_URL}"
+          } > release-notes.md
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.check-version.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          tag="v${VERSION}"
+
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release ${tag} already exists; skipping."
+            exit 0
+          fi
+
+          gh release create "$tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "nginx ${VERSION}" \
+            --notes-file release-notes.md
