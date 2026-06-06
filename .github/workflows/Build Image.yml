@@ -254,12 +254,6 @@ jobs:
             echo "- ngx_http_dav_ext_module"
             echo "- ngx_http_headers_more_filter_module"
             echo
-            echo "Log rotation:"
-            echo
-            echo "- Watches /var/log/nginx/*.log"
-            echo "- Rotates a log only after it exceeds 10MB"
-            echo "- Keeps 7 rotated logs"
-            echo
             echo "Official nginx changelog:"
             echo
             cat /tmp/nginx-release-notes

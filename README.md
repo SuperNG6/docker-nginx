@@ -9,8 +9,6 @@
 ### 更新日志
 #### 2026年06月06日
 
-添加 `/var/log/nginx/*.log` 日志轮转
-
 更新 1.30.2，重新添加 `ngx_http_cache_purge_module`
 
 #### 2025年03月19日
@@ -35,11 +33,6 @@ load_module /etc/nginx/modules/ngx_http_cache_purge_module.so;
 load_module /etc/nginx/modules/ngx_http_dav_ext_module.so;
 load_module /etc/nginx/modules/ngx_http_headers_more_filter_module.so;
 ````
-
-### 日志轮转
-
-镜像内置轻量日志轮转脚本，每小时检查一次 `/var/log/nginx/*.log`，单个日志超过 10MB 才轮转，并保留 7 份日志。
-轮转后会向 Nginx 主进程发送 `USR1` 信号，让 Nginx 重新打开日志文件。
 
 ### brotli 配置文件
 

@@ -50,11 +50,6 @@ FROM nginx:${NGINX_VERSION}
 
 # 从 builder 阶段拷贝编译好的动态模块
 COPY --from=builder /usr/src/nginx/objs/*.so /etc/nginx/modules/
-COPY bin/rotate-nginx-logs /usr/local/bin/rotate-nginx-logs
-COPY docker-entrypoint.d/90-start-logrotate.sh /docker-entrypoint.d/90-start-logrotate.sh
-
-RUN chmod +x /usr/local/bin/rotate-nginx-logs \
-    && chmod +x /docker-entrypoint.d/90-start-logrotate.sh
 
 # 你可以在这里添加加载模块的配置，或者通过挂载配置文件的方式来加载
 # RUN echo "load_module modules/ngx_http_brotli_filter_module.so;" >> /etc/nginx/nginx.conf
