@@ -1,0 +1,48 @@
+#!/bin/sh
+set -eu
+
+LOG_PATTERN="/var/log/nginx/*.log"
+MAX_SIZE_BYTES="${NGINX_LOGROTATE_SIZE:-10485760}"
+KEEP="${NGINX_LOGROTATE_KEEP:-7}"
+
+reopen_nginx_logs() {
+    if [ -s /var/run/nginx.pid ]; then
+        kill -USR1 "$(cat /var/run/nginx.pid)" 2>/dev/null || true
+    fi
+}
+
+cleanup_rotated_logs() {
+    log="$1"
+    keep_plus_one=$((KEEP + 1))
+
+    ls -1t "$log"-* 2>/dev/null | sed -n "${keep_plus_one},\$p" | xargs -r rm -f
+}
+
+rotate_one_log() {
+    log="$1"
+
+    [ -f "$log" ] || return 0
+    [ ! -L "$log" ] || return 0
+
+    size="$(stat -c %s "$log")"
+    [ "$size" -gt "$MAX_SIZE_BYTES" ] || return 0
+
+    owner="$(stat -c %u:%g "$log")"
+    mode="$(stat -c %a "$log")"
+    rotated="${log}-$(date +%Y%m%d%H%M%S)"
+
+    mv "$log" "$rotated"
+    : > "$log"
+    chmod "$mode" "$log" 2>/dev/null || true
+    chown "$owner" "$log" 2>/dev/null || true
+
+    reopen_nginx_logs
+    sleep 1
+
+    gzip -f "$rotated" 2>/dev/null || true
+    cleanup_rotated_logs "$log"
+}
+
+for log in $LOG_PATTERN; do
+    rotate_one_log "$log"
+done
