@@ -32,6 +32,7 @@ RUN mkdir -p /usr/src/nginx \
     && wget -O - http://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz | tar -xz -C /usr/src/nginx --strip-components=1
 RUN git clone --depth 1 https://github.com/arut/nginx-dav-ext-module.git /usr/src/nginx-dav-ext-module
 RUN git clone --depth 1 https://github.com/openresty/headers-more-nginx-module.git /usr/src/headers-more-nginx-module
+RUN git clone --depth 1 --branch 3.0.2 https://github.com/nginx-modules/ngx_cache_purge.git /usr/src/ngx_cache_purge
 RUN git clone --depth 1 https://github.com/google/ngx_brotli.git /usr/src/ngx_brotli \
     && cd /usr/src/ngx_brotli && git submodule update --init
 
@@ -40,6 +41,7 @@ RUN cd /usr/src/nginx && \
     ./configure --with-compat \
     --add-dynamic-module=/usr/src/ngx_brotli \
     --add-dynamic-module=/usr/src/headers-more-nginx-module \
+    --add-dynamic-module=/usr/src/ngx_cache_purge \
     --add-dynamic-module=/usr/src/nginx-dav-ext-module && \
     make modules
 

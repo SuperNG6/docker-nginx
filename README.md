@@ -4,9 +4,13 @@
 
 #### 基于官方nginx debian:buster-slim 镜像编译
 
-添加 `headers-more-nginx-module`、`ngx_brotli`、 `nginx-dav-ext-module`等第三方模块
+添加 `headers-more-nginx-module`、`ngx_brotli`、`ngx_http_cache_purge_module`、`nginx-dav-ext-module`等第三方模块
 
 ### 更新日志
+#### 2026年06月06日
+
+更新 1.30.2，重新添加 `ngx_http_cache_purge_module`
+
 #### 2025年03月19日
 
 更新 1.26.3，添加webdav模块、headers-more模块
@@ -25,6 +29,7 @@
 ````
 load_module /etc/nginx/modules/ngx_http_brotli_static_module.so;
 load_module /etc/nginx/modules/ngx_http_brotli_filter_module.so;
+load_module /etc/nginx/modules/ngx_http_cache_purge_module.so;
 load_module /etc/nginx/modules/ngx_http_dav_ext_module.so;
 load_module /etc/nginx/modules/ngx_http_headers_more_filter_module.so;
 ````
