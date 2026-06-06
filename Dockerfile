@@ -15,7 +15,7 @@ RUN apt-get update -qq \
     && apt-get install -qq --no-install-recommends -y \
     build-essential \
     ca-certificates \
-    libpcre3-dev \
+    libpcre2-dev \
     zlib1g-dev \
     libssl-dev \
     wget \
