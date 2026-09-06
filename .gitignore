@@ -1,0 +1,6 @@
+# Local upstream checkout and private deployment/validation notes.
+/tcp-brutal/
+/docs/local/
+/docs/validation/
+/docs/ngx-stream-brutal-validation.md
+__pycache__/

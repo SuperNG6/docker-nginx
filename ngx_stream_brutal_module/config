@@ -1,0 +1,16 @@
+ngx_addon_name=ngx_stream_brutal_module
+
+if [ "$NGX_SYSTEM" != Linux ]; then
+    echo "$ngx_addon_name requires Linux"
+    exit 1
+fi
+
+if [ "$STREAM" = NO ] || [ "$STREAM_SSL_PREREAD" != YES ]; then
+    echo "$ngx_addon_name requires --with-stream and --with-stream_ssl_preread_module"
+    exit 1
+fi
+
+ngx_module_type=STREAM
+ngx_module_name=ngx_stream_brutal_module
+ngx_module_srcs="$ngx_addon_dir/ngx_stream_brutal_module.c"
+. auto/module
