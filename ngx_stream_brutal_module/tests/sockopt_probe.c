@@ -65,7 +65,12 @@ int getsockopt(int fd, int level, int opt, void *v, socklen_t *n) {
         else if (s->active || mode("external")) {
             if (*n < 7) rc = fail();
             else { memset(v, 0, *n); memcpy(v, "brutal", 7); *n = 7; }
-        } else rc = real_get(fd, level, opt, v, n);
+        } else {
+            /* Fake mode must be independent of the build runner's kernel and
+             * QEMU syscall emulation. Real mode above exercises the kernel. */
+            if (*n < 6) rc = fail();
+            else { memset(v, 0, *n); memcpy(v, "cubic", 6); *n = 6; }
+        }
     } else if (opt == 23302) {
         if (mode("version-fail")) rc = fail();
         else {
