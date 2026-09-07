@@ -65,7 +65,7 @@ class Backend:
 
 
 class Nginx:
-    def __init__(self, args, backend, mode="success", workers=1, rate="1", enabled=True):
+    def __init__(self, args, backend, mode="success", workers=1, rate="8", enabled=True):
         self.args, self.backend, self.mode = args, backend, mode
         self.directory = tempfile.TemporaryDirectory(prefix="ngx-brutal-test-")
         self.root = Path(self.directory.name)
@@ -80,18 +80,24 @@ class Nginx:
         self.write(rate, enabled)
         self.proc = None
 
-    def write(self, rate="1", enabled=True, sni="target.example.com", extra="", preread="on", listen=None):
-        directive = f"brutal_sni {sni} download={rate};" if enabled else ""
+    def write(self, rate="8", enabled=True, sni="target.example.com", extra="", preread="on", listen=None, gain=None, log_level="debug"):
+        directive = f"brutal_sni {sni} download_mbps={rate};" if enabled else ""
+        if enabled and gain is not None:
+            directive = directive[:-1] + f" gain={gain};"
         listeners = listen or f"listen 127.0.0.1:{self.port} reuseport; listen [::1]:{self.port6} reuseport;"
         self.config = self.root / "nginx.conf"
         self.config.write_text(f'''load_module {self.args.module};
-error_log {self.log} debug;
+error_log {self.log} notice;
 pid {self.root}/nginx.pid;
 worker_processes {self.workers};
 env BRUTAL_TEST_MODE;
 env BRUTAL_TEST_TRACE;
 events {{ worker_connections 256; }}
-stream {{ server {{
+stream {{
+log_format brutal '$ssl_preread_server_name|$brutal_status|$brutal_enabled|$brutal_rate|$brutal_gain|$brutal_group|$brutal_version|$brutal_original_cc|$brutal_error|$brutal_recovery|$brutal_group_state';
+access_log {self.root}/access.log brutal;
+server {{
+error_log {self.log} {log_level};
 {listeners}
 ssl_preread {preread};
 preread_timeout 2s;
@@ -148,6 +154,19 @@ proxy_pass 127.0.0.1:{self.backend.port};
     def records(self):
         return [json.loads(x) for x in self.trace.read_text().splitlines()]
 
+    def wait_access(self, predicate, timeout=5):
+        deadline = time.monotonic() + timeout
+        path = self.root / "access.log"
+        while True:
+            # Ignore an incomplete final line while another worker is writing.
+            text = path.read_text() if path.exists() else ""
+            rows = [line.split("|") for line in text.split("\n")[:-1]]
+            if predicate(rows):
+                return rows
+            if time.monotonic() >= deadline:
+                raise AssertionError(f"access log condition timed out: {rows!r}")
+            time.sleep(.02)
+
     def __exit__(self, *exc):
         if self.proc is not None:
             self.proc.send_signal(signal.SIGQUIT)
@@ -164,9 +183,9 @@ proxy_pass 127.0.0.1:{self.backend.port};
 
 def config_tests(args, backend):
     n = Nginx(args, backend)
-    valid = ["0.0625", "1", "12.5", "50", "125000", "0001.000001"]
-    invalid = ["0", "-1", "+1", "NaN", "1e3", "50MB/s", "50M", "0.062499", "125000.000001",
-               "99999999999999999999999999999999999999", "1.", ".5", "1.0000001", "1..2"]
+    valid = ["1", "8", "200", "300", "1000000", "0001"]
+    invalid = ["0.5", "1.0", "300.5", "12.5", "1000001", "0", "-1", "+1", "NaN", "1e3", "50MB/s", "50M", "0.499", "1000000.001",
+               "99999999999999999999999999999999999999", "1.", ".5", "1.0001", "1..2"]
     for rate in valid + invalid:
         n.write(rate)
         result = n.check()
@@ -176,18 +195,31 @@ def config_tests(args, backend):
         assert n.check().returncode != 0, sni
     n.write(preread="off")
     assert n.check().returncode != 0
-    n.write(extra="brutal_sni second.example.com download=1;")
-    assert n.check().returncode != 0
+    n.write(extra="brutal_sni second.example.com download_mbps=200 gain=15;")
+    assert n.check().returncode == 0
+    for extra in ["brutal_sni TARGET.EXAMPLE.COM download_mbps=8;",
+                  "brutal_sni second.example.com download=50;",
+                  "brutal_sni second.example.com gain=20;",
+                  "brutal_sni second.example.com download_mbps=1 download_mbps=2;",
+                  "brutal_sni second.example.com download_mbps=1 gain=20 gain=15;",
+                  "brutal_sni second.example.com download_mbps=1 unknown=2;"]:
+        n.write(extra=extra)
+        assert n.check().returncode != 0, extra
+    for gain in ["5", "15", "20", "80", "4", "81", "-1", "1.5", "", "NaN", "999999999999999999999999"]:
+        n.write(gain=gain)
+        assert (n.check().returncode == 0) == (gain in ["5", "15", "20", "80"]), gain
     n.write(listen=f"listen 127.0.0.1:{n.port} udp;")
     assert n.check().returncode != 0
     n.write()
     # A second server shares group identity: conflicting rate must fail.
     text = n.config.read_text()
-    second = f"server {{ listen 127.0.0.1:{free_port()}; ssl_preread on; brutal_sni TARGET.EXAMPLE.COM download=2; proxy_pass 127.0.0.1:{backend.port}; }}"
+    second = f"server {{ listen 127.0.0.1:{free_port()}; ssl_preread on; brutal_sni TARGET.EXAMPLE.COM download_mbps=16; proxy_pass 127.0.0.1:{backend.port}; }}"
     n.config.write_text(text.rsplit("}", 1)[0] + second + "}\n")
     assert n.check().returncode != 0
-    n.config.write_text(n.config.read_text().replace("download=2", "download=1"))
+    n.config.write_text(n.config.read_text().replace("download_mbps=16", "download_mbps=8"))
     assert n.check().returncode == 0
+    n.config.write_text(n.config.read_text().replace("download_mbps=8;", "download_mbps=8 gain=15;", 1))
+    assert n.check().returncode != 0, "cross-server gain conflict accepted"
     n.directory.cleanup()
     print("PASS configuration grammar, ranges, listeners, duplicate and cross-server rules", flush=True)
 
@@ -211,7 +243,25 @@ def socket_tests(args, backend):
             assert records and all(r["local"] in (n.port, n.port6) for r in records), "upstream modified"
             assert len({r["pid"] for r in records}) >= 2, "did not cover two workers"
             sets = [r for r in records if r["action"] == "set-params"]
+            rows = n.wait_access(lambda rows: sum(
+                row[0].lower() == "target.example.com" for row in rows) >= 27)
+            matched = [row for row in rows if row[0].lower() == "target.example.com"]
+            assert len(matched) == 27, rows
+            expected = "enabled" if mode in ("success", "real") else "external" if mode == "external" else "failed"
+            assert all(row[1] == expected for row in matched), matched
+            assert all(row[1] == "not-enabled" for row in rows if row[0].lower() != "target.example.com")
+            if mode in ("success", "real"):
+                assert all(row[2:5] == ["1", "1000000", "20"] and row[8:] == ["none", "none", "applied"] for row in matched), matched
+            else:
+                assert all(row[2:6] == ["0", "-", "-", "-"] for row in matched), matched
+                assert all(row[9] == ("restore-failed" if mode.startswith("rollback-") else
+                    "not-modified" if mode in ("original-fail", "switch-fail") else
+                    "external-brutal-untouched" if mode == "external" else "original-restored") for row in matched), matched
+                changed = mode in ("verify-fail", "mismatch")
+                assert all(row[10] == ("may-have-changed" if changed else "untouched") for row in matched), matched
             logs = n.log.read_text()
+            startup = [line for line in logs.splitlines() if "brutal: module=0.2.0 built=" in line]
+            assert len(startup) == 2, startup
             if mode in ("success", "real"):
                 assert sets and all(r["rc"] == 0 and r["rate"] == 1000000 for r in sets), records
                 assert len({r["group"] for r in sets}) == 1 and sets[0]["group"] != 0
@@ -231,14 +281,40 @@ def socket_tests(args, backend):
         print(f"PASS socket mode={mode}: IPv4/IPv6, SNI, fragmentation, upstream isolation, workers, upload unchanged", flush=True)
 
 
+def multi_sni_test(args, backend):
+    mode = "real" if args.mode == "real" else "success"
+    n = Nginx(args, backend, mode, workers=2)
+    n.write("300", gain="15", log_level="warn",
+            extra="brutal_sni second.example.com download_mbps=200 gain=80;")
+    # Force delayed per-worker log flushes beyond the former 150ms sleep.
+    n.config.write_text(n.config.read_text().replace(
+        "access.log brutal;", "access.log brutal buffer=4k flush=1s;"))
+    with n:
+        n.exchange("TARGET.EXAMPLE.COM", fragment=True)
+        n.exchange("SECOND.EXAMPLE.COM", ipv6=True)
+        n.exchange("other.example.com")
+        params = [r for r in n.records() if r["action"] == "set-params"]
+        assert [r["rate"] for r in params] == [37500000, 25000000], params
+        assert len({r["group"] for r in params}) == 2, params
+        rows = n.wait_access(lambda rows: sum(row[1] == "enabled" for row in rows) >= 2)
+        selected = [row for row in rows if row[1] == "enabled"]
+        assert len(selected) == 2, rows
+        assert {row[0].lower(): row[3:5] for row in selected} == {
+            "target.example.com": ["37500000", "15"],
+            "second.example.com": ["25000000", "80"],
+        }, rows
+        assert "brutal: enabled" not in n.log.read_text(), "debug logging unexpectedly enabled"
+    print("PASS multiple SNI, distinct groups, gains and access variables at warn level", flush=True)
+
+
 def reload_test(args, backend):
     mode = "real" if args.mode == "real" else "success"
     with Nginx(args, backend, mode, workers=2) as n:
         n.exchange()
         group = next(r["group"] for r in n.records() if r["action"] == "set-params")
-        for rate, enabled in [("2", True), ("2", False)]:
+        for rate, enabled in [("16", True), ("16", False)]:
             old_pids = {r["pid"] for r in n.records()}
-            n.write(rate, enabled)
+            n.write(rate, enabled, gain="15")
             assert n.check().returncode == 0
             n.proc.send_signal(signal.SIGHUP)
             time.sleep(.5)
@@ -249,9 +325,54 @@ def reload_test(args, backend):
                 params = [r for r in new if r["action"] == "set-params"]
                 assert params and params[0]["group"] == group and params[0]["rate"] == 2000000
                 assert params[0]["pid"] not in old_pids
+                n.wait_access(lambda rows: any(
+                    row[1:5] == ["enabled", "1", "2000000", "15"] for row in rows))
             else:
                 assert not new, "disabled configuration still touching sockets"
     print("PASS reload rate and removal", flush=True)
+
+
+def draining_worker_test(args, backend):
+    mode = "real" if args.mode == "real" else "success"
+    for rate, enabled in [("16", True), ("8", True), ("8", False)]:
+        n = Nginx(args, backend, mode, workers=2)
+        n.config.write_text(n.config.read_text().replace("preread_timeout 2s;", "preread_timeout 30s;"))
+        with n:
+            def wait_log(predicate):
+                deadline = time.monotonic() + 5
+                while time.monotonic() < deadline:
+                    if predicate(n.log.read_text()):
+                        return
+                    time.sleep(.02)
+                raise AssertionError("worker lifecycle log timed out")
+            with socket.create_connection(("127.0.0.1", n.port), timeout=5) as pending:
+                data = hello()
+                pending.sendall(data[:3])
+                peer = pending.getsockname()[1]
+                wait_log(lambda log: f"127.0.0.1:{peer} connected to" in log)
+                n.write(rate, enabled)
+                assert n.check().returncode == 0
+                n.proc.send_signal(signal.SIGHUP)
+                wait_log(lambda log: log.count("gracefully shutting down") >= 2
+                         and log.count("brutal: module=") >= 4)
+                n.exchange()
+                writes = [r for r in n.records() if r["action"] == "set-params"]
+                assert len(writes) == int(enabled), writes
+                if enabled:
+                    assert writes[0]["rate"] == int(rate) * 125000, writes
+                pending.sendall(data[3:])
+                received = b""
+                while len(received) < len(data):
+                    part = pending.recv(len(data) - len(received))
+                    assert part, "draining worker closed a pending client"
+                    received += part
+                assert received == data
+            rows = n.wait_access(lambda rows: any(row[1] == "skipped-worker-exiting" for row in rows))
+            skipped = [row for row in rows if row[1] == "skipped-worker-exiting"]
+            assert len(skipped) == 1, rows
+            assert skipped[0][2:] == ["0", "-", "-", "-", "-", "-", "none", "not-modified", "untouched"], skipped
+            assert not [r for r in n.records() if r["peer"] == peer], "draining client socket touched"
+        print(f"PASS draining worker: rate={rate}, enabled={enabled}, late handshake proxied without socket operations", flush=True)
 
 
 def main():
@@ -267,7 +388,9 @@ def main():
     try:
         config_tests(args, backend)
         socket_tests(args, backend)
+        multi_sni_test(args, backend)
         reload_test(args, backend)
+        draining_worker_test(args, backend)
         assert backend.algorithms and all(b"brutal" not in a for a in backend.algorithms)
     finally:
         backend.sock.close()

@@ -1,0 +1,6 @@
+# Optional network laboratory; never used as the production image.
+ARG TEST_IMAGE=ngx-brutal:test
+FROM ${TEST_IMAGE}
+RUN apt-get update -qq \
+    && apt-get install -y --no-install-recommends iproute2 \
+    && rm -rf /var/lib/apt/lists/*

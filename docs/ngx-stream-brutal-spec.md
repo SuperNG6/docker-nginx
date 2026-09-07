@@ -76,7 +76,7 @@ stream {
         listen 443;
         ssl_preread on;
 
-        brutal_sni vless.example.com download=50;
+        brutal_sni vless.example.com download_mbps=300;
 
         proxy_pass $backend;
     }
@@ -87,21 +87,21 @@ stream {
 
 | 项目 | 规定 |
 | --- | --- |
-| 指令 | `brutal_sni <sni> download=<number>;` |
+| 指令 | `brutal_sni <sni> download_mbps=<integer> [gain=<integer>];` |
 | 作用域 | 仅 `stream` 内的 `server`，不提供上层继承 |
 | 默认状态 | 不配置即不启用，无隐式 SNI 或默认下载速度 |
 | SNI | ASCII 域名或 IDNA A-label；转小写后精确匹配，不做 DNS 查询 |
 | 尾部点 | 配置域名不接受尾部点；收到带尾部点的 SNI 不匹配 |
-| 单位 | 参数只填写数字，固定按 MB/s 解释，不填写单位后缀；1 MB = 1,000,000 字节 |
-| 数值 | 正十进制整数或最多六位小数；不接受指数、负数、NaN、零 |
-| 范围 | 0.0625～125000 MB/s，对应当前 v2 内核允许范围；不是推荐带宽 |
+| 单位 | 参数只填写整数 Mbps，不填写单位后缀；1 Mbps = 125,000 bytes/s |
+| 数值 | 正十进制整数；不接受小数、指数、正负号、NaN、零 |
+| 范围 | 1～1000000 Mbps；不是推荐带宽 |
 | 关闭 | 删除该行并 reload；只对新连接停止启用 |
 
-`download=50` 表示 50 MB/s，对应 50,000,000 字节/秒，即 400 Mbps。使用定点整数解析，检查乘法和累加溢出，不通过浮点数转换。
+`download_mbps=300` 表示 300 Mbps，对应 37,500,000 字节/秒。使用整数解析并检查溢出。旧 `download=` 语法已移除。
 
-重复指令、未知参数、非法域名、带单位后缀、越界值应使 `nginx -t` 失败。支持的生产用法限定为 `ssl_preread on` 和 `proxy_pass`；不支持的监听类型和 TLS 终止配置明确拒绝。实现使用指令自身 flag 元数据检查 ssl_preread，并检查 content handler 存在。Nginx 公共接口不提供该 handler 的来源身份；为避免复制 proxy 模块私有结构，第一版不在配置期证明它一定来自 proxy_pass，不支持混用其他 content handler。这是配置验证边界，非额外代理功能。
+同一 server 内重复 SNI、重复参数、未知参数、非法域名、带单位后缀、越界值应使 `nginx -t` 失败。支持的生产用法限定为 `ssl_preread on` 和 `proxy_pass`；不支持的监听类型和 TLS 终止配置明确拒绝。实现使用指令自身 flag 元数据检查 ssl_preread，并检查 content handler 存在。Nginx 公共接口不提供该 handler 的来源身份；为避免复制 proxy 模块私有结构，第一版不在配置期证明它一定来自 proxy_pass，不支持混用其他 content handler。这是配置验证边界，非额外代理功能。
 
-不同 `server` 可以各自使用本指令；同一 Nginx 配置内相同规范化 SNI 必须配置相同速度，否则配置检查失败。
+同一 `server` 支持多条不同 SNI 指令；同一 Nginx 配置内相同规范化 SNI 必须配置相同速度和 gain，否则配置检查失败。
 
 ## 5. 源码依据与版本基线
 
@@ -146,7 +146,7 @@ Nginx 参考：[proxy_pass 设置 handler](https://github.com/nginx/nginx/blob/m
 
 ## 7. 内部参数与共享组
 
-- `cwnd_gain` 固定为 20，不暴露配置。
+- `cwnd_gain` 默认 20，可通过 `gain=` 配置整数 5～80，单位十分之一。
 - `group_id` 为规范化 SNI 的稳定非零 64 位标识。
 - 确定算法为 FNV-1a 64：输入 ASCII 字节串 `ngx_stream_brutal:v1:` 后接小写 SNI，按标准 64 位无符号回绕；结果为 0 时改为 1。
 - 不把带宽、PID、时间、客户端 IP、地址族或监听端口加入 ID。
@@ -184,7 +184,7 @@ Nginx 参考：[proxy_pass 设置 handler](https://github.com/nginx/nginx/blob/m
 | --- | --- |
 | 相同配置 reload | 新旧连接继续使用相同 group，前提是 socket UID/netns 一致 |
 | 修改速度后 reload | 新 worker 首个成功设置参数的连接更新 group；已有成员在后续内核发送处理中采用新值 |
-| 新旧 worker 交接 | 极短交接期若仍有旧配置连接执行初始化，可能再次写入旧值；不承诺原子切换，验收以旧 worker 停止接收后的稳定状态为准 |
+| 新旧 worker 交接 | 初始化前检查 `ngx_exiting`；已进入优雅退出的 worker 跳过初始化，原算法正常代理，记录 `skipped-worker-exiting`。已开始的初始化不撤销，未进入退出状态的旧 worker 仍可能写入，不承诺跨 worker 原子切换 |
 | 删除指令后 reload | 新连接不由模块启用，已有连接保持到自然结束 |
 | 修改 SNI 后 reload | 新 SNI 使用另一个 group；旧连接可能继续发送，过渡期不承诺两个 group 合计受原速率约束 |
 | 重启 Nginx | 现有连接中断，随后按新配置重新建立 |
@@ -192,6 +192,10 @@ Nginx 参考：[proxy_pass 设置 handler](https://github.com/nginx/nginx/blob/m
 不增加用于即时更新存量连接的常驻控制 socket 或定时器。用户需要立即停止所有既有 Brutal 连接时，应明确知晓重启会中断连接。
 
 ## 10. 日志与可观测性
+
+0.2.0 提供每连接初始化快照变量 `$brutal_status`、`$brutal_enabled`、`$brutal_rate`、`$brutal_gain`、`$brutal_group`、`$brutal_version`、`$brutal_original_cc`、`$brutal_error`、`$brutal_recovery`、`$brutal_group_state`；在 session context 中保存，getter 不访问 socket。access log 在会话结束时输出，不表示当前实时 group 状态。字段语义与配置示例见 [模块说明](../ngx_stream_brutal_module/README.md#故障与日志)。
+
+每个 worker 启动时向 main error_log 记录一次 notice，包含模块版本、编译日期时间、API major、配置单位和默认 gain。参数写入成功但验证失败时，错误日志标记 `group_state=may-have-changed`，不通过重试覆盖共享配置。
 
 - 启用成功：debug，包含 SNI、连接标识、客户端 fd、worker PID、原算法、rate 字节/秒、group、内核版本。
 - 启用失败：warn，包含步骤、errno、SNI、连接标识和恢复结果。
@@ -270,4 +274,4 @@ VLESS/Reality 端到端测试另外记录应用吞吐，允许协议开销导致
 - fail-open 是继续正常代理并尽力恢复；内核故障或回滚失败时无法保证算法已经恢复。
 - 内核模块的长期稳定性同样影响服务；本 Nginx 模块无法消除内核实现自身的缺陷。
 
-第一版的使用体验固定为：**指定一个 SNI 和下载速度数字（固定单位 MB/s），其他参数由模块处理；上传保持原有行为。**
+当前语法支持多个精确 SNI、整数 `download_mbps` 和可选整数 `gain`；共享 group 由模块生成，上传保持原有行为。

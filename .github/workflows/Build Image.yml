@@ -261,7 +261,9 @@ jobs:
             echo "- ngx_http_headers_more_filter_module"
             echo "- ngx_stream_brutal_module (optional; per-SNI TCP Brutal v2 download)"
             echo
-            echo 'TCP Brutal usage: brutal_sni vless.example.com download=50; (50 MB/s shared download target).'
+            echo 'TCP Brutal usage: brutal_sni vless.example.com download_mbps=300 gain=20; (integer Mbps, gain optional).'
+            echo 'Migration: download= has been removed; replace download=50 with download_mbps=400 to preserve the same rate.'
+            echo 'Supports multiple SNI entries, per-session access-log variables, and skipping new initialization in draining workers.'
             echo 'Requires TCP Brutal v2 on the host. Disabled unless explicitly loaded and configured.'
             echo 'Configuration and failure-injection tests run during image builds; 24-hour/public-network acceptance is separate.'
             echo "Documentation: https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/README.md"

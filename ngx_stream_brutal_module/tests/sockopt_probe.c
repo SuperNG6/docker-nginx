@@ -57,8 +57,9 @@ int getsockopt(int fd, int level, int opt, void *v, socklen_t *n) {
     if (level != IPPROTO_TCP || fd < 0 || fd >= 65536 ||
         (opt != TCP_CONGESTION && opt != 23301 && opt != 23302)) return real_get(fd, level, opt, v, n);
     state_t *s = &states[fd];
-    if (mode("real")) {
-        rc = real_get(fd, level, opt, v, n);
+    if (mode("real") || mode("real-verify-fail")) {
+        rc = mode("real-verify-fail") && opt == 23301 && s->written
+             ? fail() : real_get(fd, level, opt, v, n);
     } else if (opt == TCP_CONGESTION) {
         s->reads++;
         if (mode("original-fail") && s->reads == 1) rc = fail();
@@ -97,7 +98,10 @@ int setsockopt(int fd, int level, int opt, const void *v, socklen_t n) {
     if (level != IPPROTO_TCP || fd < 0 || fd >= 65536 ||
         (opt != TCP_CONGESTION && opt != 23301)) return real_set(fd, level, opt, v, n);
     state_t *s = &states[fd];
-    if (mode("real")) rc = real_set(fd, level, opt, v, n);
+    if (mode("real") || mode("real-verify-fail")) {
+        rc = real_set(fd, level, opt, v, n);
+        if (rc == 0 && opt == 23301) s->written = 1;
+    }
     else if (opt == TCP_CONGESTION) {
         if (n >= 6 && !memcmp(v, "brutal", 6)) {
             if (mode("switch-fail")) rc = fail();

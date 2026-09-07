@@ -39,7 +39,7 @@ def main():
                 samples.append(measure(old, 5))
                 initial = [r for r in n.records() if r["action"] == "set-params"]
                 assert len(initial) == 1
-                n.write("2")
+                n.write("16")
                 assert n.check().returncode == 0
                 n.proc.send_signal(signal.SIGHUP)
                 time.sleep(.5)
@@ -52,7 +52,7 @@ def main():
                 assert params[0]["pid"] != params[1]["pid"]
                 measure(old, 2)
                 samples.append(measure(old, 5))
-                n.write("2", enabled=False)
+                n.write("16", enabled=False)
                 n.proc.send_signal(signal.SIGHUP)
                 time.sleep(.5)
                 before = len(n.records())

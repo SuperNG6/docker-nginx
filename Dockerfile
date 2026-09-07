@@ -1,5 +1,5 @@
 # 默认值只在 build-arg 未提供时生效。如果提供了空值，则变量为空。
-ARG NGINX_VERSION=1.30.2
+ARG NGINX_VERSION=1.30.4
 
 # Builder Stage: 用于编译模块
 FROM nginx:${NGINX_VERSION} AS builder
@@ -67,7 +67,11 @@ RUN cp /usr/src/nginx/objs/*.so /etc/nginx/modules/ \
     && python3 /usr/src/ngx_stream_brutal_module/tests/integration.py \
     --nginx /usr/sbin/nginx \
     --module /etc/nginx/modules/ngx_stream_brutal_module.so \
-    --probe /tmp/sockopt_probe.so
+    --probe /tmp/sockopt_probe.so \
+    && python3 /usr/src/ngx_stream_brutal_module/tests/sni_failure.py \
+    --nginx /usr/sbin/nginx --probe /tmp/sockopt_probe.so \
+    --source /usr/src/ngx_stream_brutal_module/ngx_stream_brutal_module.c \
+    --nginx-source /usr/src/nginx
 
 # 生产镜像：保留官方入口和默认配置，仅添加通过测试的动态模块。
 FROM nginx:${NGINX_VERSION} AS production

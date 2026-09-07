@@ -45,8 +45,8 @@ class Source:
 def trial(args, count, repeat):
     source = Source()
     sni = f"bench-{count}-{repeat}.example.com"
-    n = Nginx(args, source, "real", workers=2, rate=str(args.rate))
-    n.write(str(args.rate), sni=sni)
+    n = Nginx(args, source, "real", workers=2, rate=str(int(args.rate * 8)))
+    n.write(str(int(args.rate * 8)), sni=sni)
     n.config.write_text(n.config.read_text().replace("proxy_timeout 5s;", "proxy_timeout 300s;"))
     try:
         with n:
@@ -104,9 +104,11 @@ def main():
     p.add_argument("--seconds", type=int, default=60)
     p.add_argument("--warmup", type=int, default=10)
     p.add_argument("--repeats", type=int, default=3)
-    p.add_argument("--rate", type=float, default=1)
+    p.add_argument("--rate", type=float, default=1.0)
     p.add_argument("--output", required=True)
     args = p.parse_args()
+    if not 1 <= args.rate * 8 <= 1000000 or not (args.rate * 8).is_integer():
+        p.error("--rate is MB/s and must convert to integer Mbps in 1..1000000")
     for field in ("nginx", "module", "probe"):
         setattr(args, field, str(Path(getattr(args, field)).resolve()))
     results = []
