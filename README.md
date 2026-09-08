@@ -145,6 +145,9 @@ GitHub Actions 每周检查 Nginx stable 版本，构建并发布到 Docker Hub 
 
 ## 历史更新
 
+
+
+- **2026-09-07**：更新至 Nginx 1.30.4，添加ngx_stream_brutal_module模块。
 - **2026-06-06**：更新至 Nginx 1.30.2，重新添加缓存清理模块。
 - **2025-03-19**：更新至 Nginx 1.26.3，添加 WebDAV 扩展和 headers-more 模块。
 - **2024-07-30**：Nginx 1.26.1 版本调整为仅添加 Brotli，移除当时的缓存清理模块；模块目录变更为 `/etc/nginx/modules/`。
