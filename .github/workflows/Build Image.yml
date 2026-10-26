@@ -81,6 +81,7 @@ jobs:
             echo
             echo "- Latest stable: ${latest_version}"
             echo "- Docker Hub tag: ${DOCKER_IMAGE}:stable-${latest_version}"
+            echo "- Rolling series tag: stable-${latest_version%.*}"
             echo "- Build needed: ${should_build}"
             echo "- Force build: ${force_build}"
             echo "- Changelog: ${changes_url}"
@@ -207,8 +208,10 @@ jobs:
 
           docker buildx imagetools create \
             --tag "${{ env.DOCKER_IMAGE }}:latest" \
+            --tag "${{ env.DOCKER_IMAGE }}:stable-${version%.*}" \
             --tag "${{ env.DOCKER_IMAGE }}:stable-${version}" \
             --tag "${{ env.GHCR_IMAGE }}:latest" \
+            --tag "${{ env.GHCR_IMAGE }}:stable-${version%.*}" \
             --tag "${{ env.GHCR_IMAGE }}:stable-${version}" \
             "${image_refs[@]}"
 
@@ -218,9 +221,11 @@ jobs:
 
           echo "--- Inspecting Docker Hub image ---"
           docker buildx imagetools inspect "${{ env.DOCKER_IMAGE }}:stable-${version}"
+          docker buildx imagetools inspect "${{ env.DOCKER_IMAGE }}:stable-${version%.*}"
 
           echo "--- Inspecting GHCR image ---"
           docker buildx imagetools inspect "${{ env.GHCR_IMAGE }}:stable-${version}"
+          docker buildx imagetools inspect "${{ env.GHCR_IMAGE }}:stable-${version%.*}"
 
       - name: Write release notes
         env:
@@ -246,8 +251,10 @@ jobs:
             echo "Docker images:"
             echo
             echo "- docker.io/${{ env.DOCKER_IMAGE }}:stable-${VERSION}"
+            echo "- docker.io/${{ env.DOCKER_IMAGE }}:stable-${VERSION%.*}"
             echo "- docker.io/${{ env.DOCKER_IMAGE }}:latest"
             echo "- ${{ env.GHCR_IMAGE }}:stable-${VERSION}"
+            echo "- ${{ env.GHCR_IMAGE }}:stable-${VERSION%.*}"
             echo "- ${{ env.GHCR_IMAGE }}:latest"
             echo
             echo "Source commit: ${GITHUB_SHA}"

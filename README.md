@@ -22,7 +22,7 @@ docker pull superng6/nginx:latest
 docker pull ghcr.io/superng6/nginx:latest
 ```
 
-`latest` 跟随最新成功发布的镜像，也可以使用 `stable-<Nginx版本>` 标签，例如 `superng6/nginx:stable-1.30.2`。版本标签以实际发布为准。
+`latest` 跟随最新成功发布的镜像。`stable-<主版本.次版本>` 是系列滚动标签，例如 `superng6/nginx:stable-1.30` 始终指向该系列最新成功发布的补丁版本；发布 `stable-1.30.6` 时，`stable-1.30` 会指向同一镜像，后续发布 `stable-1.30.7` 时自动更新。也可以使用 `stable-<完整版本>` 标签选择具体版本。Docker Hub 和 GHCR 使用相同的标签规则，版本标签以实际发布为准。
 
 ## 加载模块
 
@@ -141,7 +141,7 @@ docker build --build-arg NGINX_VERSION=1.30.4 -t nginx-custom:local .
 
 GitHub Actions 每周检查 Nginx stable 版本，构建并发布到 Docker Hub 和 GHCR，也支持手动运行 **Build Docker Image**。
 
-同一 Nginx 版本需要重新构建时，可设置 `force_build=true`。发布会更新 `latest` 和对应的 `stable-<版本>` 标签。
+同一 Nginx 版本需要重新构建时，可设置 `force_build=true`。发布会同时更新 `latest`、对应的 `stable-<完整版本>` 和 `stable-<主版本.次版本>` 标签。首次启用系列滚动标签时，如果完整版本已经发布，需要手动运行一次并设置 `force_build=true`，以创建系列标签。
 
 ## 历史更新
 
