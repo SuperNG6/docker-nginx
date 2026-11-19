@@ -9,8 +9,8 @@ on:
         type: boolean
         default: false
   schedule:
-    # Every Monday 09:00 Asia/Shanghai.
-    - cron: "0 1 * * 1"
+    # Every day 14:22 Asia/Shanghai.
+    - cron: "22 6 * * *"
 
 env:
   DOCKER_IMAGE: superng6/nginx
